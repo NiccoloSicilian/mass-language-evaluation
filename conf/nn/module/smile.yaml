@@ -1,0 +1,19 @@
+defaults:
+  - _self_
+
+_target_: mass.pl_module.smile.SmileUpscalingAlgorithm
+
+zeroshot_model: ??  
+finetuned_models: ??
+
+oracle_mode: false
+
+device: cuda
+full_matrices: true
+gate_k: 16   # 16                   
+k: 32        # 32 SMILE-1 for images               
+top_k: 1                      
+routing_use_diff: true        
+average_experts: false         
+upscaling_accelerator: cuda    
+model_path: null             

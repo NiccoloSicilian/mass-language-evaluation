@@ -1,0 +1,7 @@
+model_name: ViT-B-16 # ViT-B-32, ViT-L-14
+layer_to_hook: model.visual.transformer.resblocks.9.mlp.c_fc
+openclip_cachedir: ${misc.openclip_cachedir}
+model:
+  _target_: mass.utils.io_utils.load_model_from_hf
+  model_name: ViT-B-16
+  dataset_name: base

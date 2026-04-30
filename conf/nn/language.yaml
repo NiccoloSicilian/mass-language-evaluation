@@ -1,0 +1,6 @@
+defaults:
+  - _self_
+  - module: mass
+  - encoder: t5
+  - task: lang_classification
+  - tokenizer: t5

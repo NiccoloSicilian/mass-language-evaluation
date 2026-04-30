@@ -1,0 +1,26 @@
+_target_: mass.merger.dual_merger.DualMerger
+
+optimal_alphas:
+  t5-base:
+    2: 1.0
+    4: 1.0
+    6: 1.0
+    8: 1.0
+  ViT-B-32:
+    8: 1.5
+    14: 1.1
+    20: 1.2
+  ViT-B-16:
+    8: 1.2
+    14: 1.0
+    20: 1.0
+  ViT-L-14:
+    8: 3.0
+    14: 3.8
+    20: 1.2
+
+svd_path: ${misc.svd_path}
+svd_compress_factor: 1.0
+aggregation_mode: "avg"   # "avg" or "tsv"
+mass_schedule: "uniform"  # "uniform" or "linear"
+model_name: ${nn.encoder.model_name}
