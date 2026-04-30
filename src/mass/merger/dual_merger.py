@@ -101,7 +101,7 @@ class DualMerger(TaskVectorBasedMerger):
         else:
             ordered_keys = get_vit_topological_order(raw_keys)
 
-        pylogger.info(f"Ordered keys ({len(ordered_keys)}): {ordered_keys[:4]} ...")
+        print(f"Ordered keys ({len(ordered_keys)}): {ordered_keys[:4]} ...")
 
         # ── Step 6: apply duality map ─────────────────────────────────────────
         dualized = build_duality_map(
@@ -123,14 +123,16 @@ class DualMerger(TaskVectorBasedMerger):
         gc.collect()
 
         # ── Step 7: apply to base model ───────────────────────────────────────
+        # OmegaConf stores YAML integer keys as strings, so check both int and str.
         coefficient = 1.0
-        if (
-            self.model_name in self.optimal_alphas
-            and num_tasks in self.optimal_alphas[self.model_name]
-        ):
-            coefficient = self.optimal_alphas[self.model_name][num_tasks]
+        if self.model_name in self.optimal_alphas:
+            alpha_map = self.optimal_alphas[self.model_name]
+            for key in (num_tasks, str(num_tasks)):
+                if key in alpha_map:
+                    coefficient = float(alpha_map[key])
+                    break
 
-        pylogger.info(
+        print(
             f"DualMerger alpha={coefficient}, model={self.model_name}, tasks={num_tasks}"
         )
 
