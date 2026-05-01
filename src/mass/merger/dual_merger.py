@@ -70,22 +70,12 @@ class DualMerger(TaskVectorBasedMerger):
             task_dicts, datasets, self.svd_path, self.svd_compress_factor
         )
 
-        # ── Step 3: aggregate task vectors ───────────────────────────────────
-        if self.aggregation_mode == "avg":
-            multi_task_vector = avg_layers(
-                svd_dict=svd_dict,
-                device=str(self.device),
-            )
-        elif self.aggregation_mode == "tsv":
-            multi_task_vector = sum_svd(
+        multi_task_vector = sum_svd(
                 ref_state_dict=copy.deepcopy(base_model.state_dict()),
                 svd_dicts=svd_dict,
                 non_matrix_params_aggregation="mean",
                 device=str(self.device),
             )
-        else:
-            pylogger.error(f"Unknown aggregation_mode: '{self.aggregation_mode}'")
-            return None
 
         # ── Step 4: move to CPU before dualisation ───────────────────────────
         multi_task_vector_cpu = {k: v.cpu() for k, v in multi_task_vector.items()}
@@ -114,9 +104,6 @@ class DualMerger(TaskVectorBasedMerger):
 
         for key in dualized:
             multi_task_vector_cpu[key] = dualized[key]
-        for key in multi_task_vector_cpu:
-            if key not in dualized:
-                multi_task_vector_cpu[key]=multi_task_vector_cpu[key]/len(datasets)
         multi_task_vector_cpu = {
             k: v.to(self.device) for k, v in multi_task_vector_cpu.items()
         }
