@@ -103,7 +103,7 @@ class Conv2DSVD(Atom):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def uniform_mass_schedule(current_l, tot_layer):
-    return 0.1
+    return 0.5
 
 
 def linear_mass_schedule(current_l, tot_layer):
