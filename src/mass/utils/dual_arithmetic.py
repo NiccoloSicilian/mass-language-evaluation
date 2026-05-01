@@ -13,7 +13,6 @@ import torch
 from modula.abstract import *
 from modula.bond import *
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # SVD orthogonalisation helper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -198,7 +197,19 @@ def ViT_L_14(num_classes=768, num_blocks=24, d_embed=1024, patch_size=14,
 # ─────────────────────────────────────────────────────────────────────────────
 # Architecture graph – FLAN-T5-base
 # ─────────────────────────────────────────────────────────────────────────────
-
+def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
+    """Multi-head attention"""
+    Q = SplitIntoHeads(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
+    K = SplitIntoHeads(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
+    V = SplitIntoHeads(num_heads) @ LinearSVD(num_heads * d_value, d_embed)
+    W = Linear(d_embed, num_heads * d_value) @ MergeHeads()
+    
+    if causal:
+        AttentionScores = Softmax(softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
+    else:
+        AttentionScores = Softmax(softmax_scale) @ AttentionQK() @ Rope(d_query) @ (Q, K)
+    return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
+    
 def FlanT5Base(
     d_model=768,
     d_ff=2048,
@@ -225,15 +236,12 @@ def FlanT5Base(
     # ── Encoder ──────────────────────────────────────────────────────────────
     encoder = None
     for _ in range(num_encoder_layers):
-        q    = LinearSVD(inner_dim, d_model);  q.mass    = ms(layer_idx, tot_layers); layer_idx += 1
-        k    = LinearSVD(inner_dim, d_model);  k.mass    = ms(layer_idx, tot_layers); layer_idx += 1
-        v    = LinearSVD(inner_dim, d_model);  v.mass    = ms(layer_idx, tot_layers); layer_idx += 1
-        o    = LinearSVD(d_model, inner_dim);  o.mass    = ms(layer_idx, tot_layers); layer_idx += 1
+        att = Attention(12,d_model, 64, 64, 1.0, False)
+        layer_idx += 4
         wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
         wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
         wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
 
-        att   = o @ v @ k @ q
         ffn   = wo @ wi_1 @ wi_0
         block = ffn @ att
 
@@ -242,20 +250,14 @@ def FlanT5Base(
     # ── Decoder ──────────────────────────────────────────────────────────────
     decoder = None
     for _ in range(num_decoder_layers):
-        sq   = LinearSVD(inner_dim, d_model);  sq.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        sk   = LinearSVD(inner_dim, d_model);  sk.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        sv   = LinearSVD(inner_dim, d_model);  sv.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        so   = LinearSVD(d_model, inner_dim);  so.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        cq   = LinearSVD(inner_dim, d_model);  cq.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        ck   = LinearSVD(inner_dim, d_model);  ck.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        cv   = LinearSVD(inner_dim, d_model);  cv.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-        co   = LinearSVD(d_model, inner_dim);  co.mass   = ms(layer_idx, tot_layers); layer_idx += 1
+        self_att = Attention(12,d_model, 64, 64, 1.0, False)
+        layer_idx += 4
+        cross_att = Attention(12,d_model, 64, 64, 1.0, True)
+        layer_idx += 4
         wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
         wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
         wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
 
-        self_att  = so @ sv @ sk @ sq
-        cross_att = co @ cv @ ck @ cq
         ffn       = wo @ wi_1 @ wi_0
         block     = ffn @ cross_att @ self_att
 
