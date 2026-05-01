@@ -356,7 +356,7 @@ def FlanT5Base(
 
         ffn   = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = LinearSVD(32, 12);    wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            rel_att_bias = LinearSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
             att = rel_att_bias @att
         block = ffn @ att
        
@@ -375,7 +375,7 @@ def FlanT5Base(
         
         ffn       = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = LinearSVD(32, 12);    wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            rel_att_bias = LinearSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
             att = rel_att_bias @att
         block     = ffn @ cross_att @ self_att
 
@@ -436,7 +436,9 @@ def get_t5_topological_order(keys):
         m = re.search(r"encoder\.block\.(\d+)", name)
         if m:
             block = int(m.group(1))
+            print(name)
             for param, sub in _ENC_ATT.items():
+                print(f"SelfAttention.{param}.weight" in name)
                 if f"SelfAttention.{param}.weight" in name:
                     return (0, block, sub)
             for param, sub in _ENC_FFN.items():
