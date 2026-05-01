@@ -395,12 +395,13 @@ def _is_t5_matrix_key(name: str) -> bool:
     """
     _SKIP = ("bias", "layer_norm",
              "embed_tokens", "lm_head", "shared")
+    if re.search("relative_attention_bias",name):
+        return True
     if any(s in name for s in _SKIP):
         return False
     if not name.endswith(".weight"):
         return False
-    if re.search("relative_attention_bias",name):
-        return True
+    
     if re.search(r"encoder\.block\.\d+\.layer\.0\.SelfAttention\.[qkvo]\.weight", name):
         return True
     if re.search(r"encoder\.block\.\d+\.layer\.1\.DenseReluDense\.(wi_0|wi_1|wo)\.weight", name):
