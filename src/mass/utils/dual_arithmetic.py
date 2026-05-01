@@ -393,10 +393,11 @@ def _is_t5_matrix_key(name: str) -> bool:
     Returns True for the 216 weight matrices to dualize in FLAN-T5-base.
     Skips biases, layer norms, embeddings, relative attention biases, lm_head.
     """
-    _SKIP = ("bias", "layer_norm",
-             "embed_tokens", "lm_head", "shared")
     if re.search("relative_attention_bias",name):
         return True
+    _SKIP = ("bias", "layer_norm",
+             "embed_tokens", "lm_head", "shared")
+    
     if any(s in name for s in _SKIP):
         return False
     if not name.endswith(".weight"):
