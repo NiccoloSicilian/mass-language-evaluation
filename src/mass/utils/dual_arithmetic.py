@@ -376,7 +376,7 @@ def FlanT5Base(
         ffn       = wo @ wi_1 @ wi_0
         if i == 0:
             rel_att_bias = LinearSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
-            att = rel_att_bias @self_att
+            self_att = rel_att_bias @self_att
         block     = ffn @ cross_att @ self_att
 
         decoder = block @ decoder if decoder is not None else block
