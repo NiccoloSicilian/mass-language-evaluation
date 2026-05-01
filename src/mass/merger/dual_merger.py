@@ -5,7 +5,7 @@ import logging
 import torch
 
 from mass.merger.merger import TaskVectorBasedMerger
-from mass.utils.utils import apply_dict_to_model, compute_task_dict, print_memory
+from mass.utils.utils import apply_dict_to_model, compute_task_dict, print_memory, sum_task_dict
 from mass.utils.task_vectors import avg_layers, get_svd_dict, sum_svd
 from mass.utils.dual_arithmetic import build_duality_map, get_t5_topological_order, get_vit_topological_order
 
