@@ -347,7 +347,7 @@ def FlanT5Base(
 
     # ── Encoder ──────────────────────────────────────────────────────────────
     encoder = None
-    for _ in range(num_encoder_layers):
+    for i in range(num_encoder_layers):
         att = Attention(12,d_model, 64, 64, 1.0, False)
         layer_idx += 4
         wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
@@ -355,8 +355,11 @@ def FlanT5Base(
         wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
 
         ffn   = wo @ wi_1 @ wi_0
+        if i == 0:
+            rel_att_bias = LinearSVD(32, 12);    wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            att = rel_att_bias @att
         block = ffn @ att
-
+       
         encoder = block @ encoder if encoder is not None else block
 
     # ── Decoder ──────────────────────────────────────────────────────────────
@@ -369,8 +372,11 @@ def FlanT5Base(
         wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
         wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
         wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-
+        
         ffn       = wo @ wi_1 @ wi_0
+        if i == 0:
+            rel_att_bias = LinearSVD(32, 12);    wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            att = rel_att_bias @att
         block     = ffn @ cross_att @ self_att
 
         decoder = block @ decoder if decoder is not None else block
@@ -387,13 +393,14 @@ def _is_t5_matrix_key(name: str) -> bool:
     Returns True for the 216 weight matrices to dualize in FLAN-T5-base.
     Skips biases, layer norms, embeddings, relative attention biases, lm_head.
     """
-    _SKIP = ("bias", "layer_norm", "relative_attention_bias",
+    _SKIP = ("bias", "layer_norm",
              "embed_tokens", "lm_head", "shared")
     if any(s in name for s in _SKIP):
         return False
     if not name.endswith(".weight"):
         return False
-
+    if re.search("relative_attention_bias",name):
+        return True
     if re.search(r"encoder\.block\.\d+\.layer\.0\.SelfAttention\.[qkvo]\.weight", name):
         return True
     if re.search(r"encoder\.block\.\d+\.layer\.1\.DenseReluDense\.(wi_0|wi_1|wo)\.weight", name):
