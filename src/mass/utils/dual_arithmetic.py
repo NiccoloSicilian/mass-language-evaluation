@@ -137,7 +137,7 @@ class MergeHeadsTorch(Bond):
         B, num_heads, T, head_dim = x.shape
         
         # .permute() to swap back, then reshape to flatten
-        return x.permute(0, 2, 1, 3).reshape(B, T, num_heads * head_dim
+        return x.permute(0, 2, 1, 3).reshape(B, T, num_heads * head_dim)
                                              
 class AttentionQKTorch(Bond):
     """Computes the query and key matrix multiplication in attention."""
