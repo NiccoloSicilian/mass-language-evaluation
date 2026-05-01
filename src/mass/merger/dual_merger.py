@@ -101,7 +101,7 @@ class DualMerger(TaskVectorBasedMerger):
         else:
             ordered_keys = get_vit_topological_order(raw_keys)
 
-        print(f"Ordered keys ({len(ordered_keys)}): {ordered_keys[:4]} ...")
+        print(f"Ordered keys ({len(ordered_keys)}): {ordered_keys[:5]} ...")
 
         # ── Step 6: apply duality map ─────────────────────────────────────────
         dualized = build_duality_map(
