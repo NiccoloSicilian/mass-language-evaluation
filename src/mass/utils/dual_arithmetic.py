@@ -364,7 +364,7 @@ def FlanT5Base(
 
     # ── Decoder ──────────────────────────────────────────────────────────────
     decoder = None
-    for _ in range(num_decoder_layers):
+    for i in range(num_decoder_layers):
         self_att = Attention(12,d_model, 64, 64, 1.0, False)
         layer_idx += 4
         cross_att = Attention(12,d_model, 64, 64, 1.0, True)
