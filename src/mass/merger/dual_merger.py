@@ -54,29 +54,28 @@ class DualMerger(TaskVectorBasedMerger):
         # ── Step 1: compute task vectors ─────────────────────────────────────
         task_dicts = {}
         for dataset in datasets:
-            ft_state_dict = {
-                k: v.to(self.device) for k, v in finetuned_models[dataset].items()
-            }
-            task_dicts[dataset] = compute_task_dict(base_model.state_dict(), ft_state_dict)
+            ft_state_dict = {k: v.to(self.device) for k, v in finetuned_models[dataset].items()}
+            task_dict = compute_task_dict(base_model.state_dict(), ft_state_dict)
+            cumulative_dict = sum_task_dict(cumulative_dict, task_dict)
+            del finetuned_models[dataset]
             del ft_state_dict
-            if self.device.type == "cuda":
-                torch.cuda.empty_cache()
-                gc.collect()
+            torch.cuda.empty_cache()
 
         print_memory("after computing task dicts")
 
         # ── Step 2: SVD decomposition ─────────────────────────────────────────
+        '''
         svd_dict = get_svd_dict(
             task_dicts, datasets, self.svd_path, self.svd_compress_factor
         )
-
+        
         multi_task_vector = sum_svd(
                 ref_state_dict=copy.deepcopy(base_model.state_dict()),
                 svd_dicts=svd_dict,
                 non_matrix_params_aggregation="mean",
                 device=str(self.device),
             )
-
+        '''
         # ── Step 4: move to CPU before dualisation ───────────────────────────
         multi_task_vector_cpu = {k: v.cpu() for k, v in multi_task_vector.items()}
         del multi_task_vector
@@ -104,6 +103,10 @@ class DualMerger(TaskVectorBasedMerger):
 
         for key in dualized:
             multi_task_vector_cpu[key] = dualized[key]
+        for key in multi_task_vector_cpu:
+            if key not in dualized:
+                multi_task_vector_cpu[key] = multi_task_vector_cpu[key]/len(datasets)
+                print(key, "averaged")
         multi_task_vector_cpu = {
             k: v.to(self.device) for k, v in multi_task_vector_cpu.items()
         }
