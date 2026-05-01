@@ -52,7 +52,7 @@ class DualMerger(TaskVectorBasedMerger):
         num_tasks = len(datasets)
 
         # ── Step 1: compute task vectors ─────────────────────────────────────
-        task_dicts = {}
+        cumulative_dict ={}
         for dataset in datasets:
             ft_state_dict = {k: v.to(self.device) for k, v in finetuned_models[dataset].items()}
             task_dict = compute_task_dict(base_model.state_dict(), ft_state_dict)
