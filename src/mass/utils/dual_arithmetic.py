@@ -12,6 +12,7 @@ from math import sqrt
 import torch
 from modula.abstract import *
 from modula.bond import *
+import math
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SVD orthogonalisation helper
@@ -26,6 +27,50 @@ def svd_orthogonalize(M):
 # Atomic modules
 # ─────────────────────────────────────────────────────────────────────────────
 
+class EmbedSVD(Atom):
+    def __init__(self, d_embed, num_embed):
+        super().__init__()
+        self.num_embed = num_embed
+        self.d_embed = d_embed
+        self.smooth = True
+        self.mass = 1
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        weights = w[0]  # shape [num_embed, d_embed]
+        # PyTorch handles list/tensor indexing identically here
+        return weights[x]
+
+    def initialize(self, key=None):
+        # Note: PyTorch manages randomness globally. 
+        # If you want reproducibility like JAX's 'key', you can pass a torch.Generator to the 'generator' kwarg.
+        # Otherwise, standard torch.randn is perfectly fine.
+        weight = torch.randn(self.num_embed, self.d_embed, generator=key)
+        
+        # torch.linalg.vector_norm is the PyTorch equivalent of jnp.linalg.norm for specific axes
+        norm = torch.linalg.vector_norm(weight, ord=2, dim=1, keepdim=True)
+        weight = (weight / norm) * math.sqrt(self.d_embed)
+        
+        return [weight]
+
+    def project(self, w):
+        weight = w[0]
+        
+        norm = torch.linalg.vector_norm(weight, ord=2, dim=1, keepdim=True)
+        weight = (weight / norm) * math.sqrt(self.d_embed)
+        
+        return [weight]
+
+    def dualize(self, grad_w, target_norm=1.0):
+        grad = grad_w[0]
+        
+        norm = torch.linalg.vector_norm(grad, ord=2, dim=1, keepdim=True)
+        d_weight = (grad / norm) * math.sqrt(self.d_embed) * target_norm
+        
+        # PyTorch has an identical nan_to_num function to handle division by zero
+        d_weight = torch.nan_to_num(d_weight, nan=0.0)
+        
+        return [d_weight]
 class LinearSVD(Atom):
     def __init__(self, fanout, fanin):
         super().__init__()
@@ -356,7 +401,7 @@ def FlanT5Base(
 
         ffn   = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = LinearSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            rel_att_bias = EmbedSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
             att = rel_att_bias @att
         block = ffn @ att
        
@@ -375,7 +420,7 @@ def FlanT5Base(
         
         ffn       = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = LinearSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            rel_att_bias = EmbedSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
             self_att = rel_att_bias @self_att
         block     = ffn @ cross_att @ self_att
 
