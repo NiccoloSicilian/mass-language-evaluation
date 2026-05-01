@@ -54,22 +54,15 @@ class DualMerger(TaskVectorBasedMerger):
         # ── Step 1: compute task vectors ─────────────────────────────────────
         task_dicts = {}
         for dataset in datasets:
-            ft_state_dict = {
-                k: v.to(self.device) for k, v in finetuned_models[dataset].items()
-            }
-            task_dicts[dataset] = compute_task_dict(base_model.state_dict(), ft_state_dict)
+            ft_state_dict = {k: v.to(self.device) for k, v in finetuned_models[dataset].items()}
+            task_dict = compute_task_dict(base_model.state_dict(), ft_state_dict)
+            cumulative_dict = sum_task_dict(cumulative_dict, task_dict)
+            del finetuned_models[dataset]
             del ft_state_dict
-            if self.device.type == "cuda":
-                torch.cuda.empty_cache()
-                gc.collect()
+            torch.cuda.empty_cache()
 
         print_memory("after computing task dicts")
-
-        # ── Step 2: SVD decomposition ─────────────────────────────────────────
-        svd_dict = get_svd_dict(
-            task_dicts, datasets, self.svd_path, self.svd_compress_factor
-        )
-
+        '''
         # ── Step 3: aggregate task vectors ───────────────────────────────────
         if self.aggregation_mode == "avg":
             multi_task_vector = avg_layers(
@@ -86,7 +79,8 @@ class DualMerger(TaskVectorBasedMerger):
         else:
             pylogger.error(f"Unknown aggregation_mode: '{self.aggregation_mode}'")
             return None
-
+        '''
+        multi_task_vector_cpu = cumulative_dict
         # ── Step 4: move to CPU before dualisation ───────────────────────────
         multi_task_vector_cpu = {k: v.cpu() for k, v in multi_task_vector.items()}
         del multi_task_vector
@@ -114,6 +108,9 @@ class DualMerger(TaskVectorBasedMerger):
 
         for key in dualized:
             multi_task_vector_cpu[key] = dualized[key]
+        for key in multi_task_vector:
+            if key not in dualized:
+                multi_task_vector_cpu[key] = multi_task_vector_cpu[key]/ num_tasks
             
         multi_task_vector_cpu = {
             k: v.to(self.device) for k, v in multi_task_vector_cpu.items()
