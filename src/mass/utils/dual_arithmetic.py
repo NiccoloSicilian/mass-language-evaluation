@@ -342,7 +342,7 @@ def FlanT5Base(
     Total atoms: 12×7 + 12×11 = 216
     """
     ms = uniform_mass_schedule if mass_schedule == "uniform" else linear_mass_schedule
-    tot_layers = num_encoder_layers * 7 + num_decoder_layers * 11
+    tot_layers = num_encoder_layers * 7 + num_decoder_layers * 11 +2
     layer_idx = 0
 
     # ── Encoder ──────────────────────────────────────────────────────────────
@@ -538,6 +538,7 @@ def build_duality_map(layer_names, grads, device, mass_schedule, model_name):
 
     if "t5" in model_name.lower():
         for name in layer_names:
+            print(name, _is_t5_matrix_key(name))
             if _is_t5_matrix_key(name):
                 to_consider_name.append(name)
                 to_consider_grad.append(grads[name].to(device))
