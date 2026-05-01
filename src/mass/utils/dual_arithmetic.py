@@ -96,7 +96,119 @@ class Conv2DSVD(Atom):
                 result[:, :, i, j] = svd_orthogonalize(weight[:, :, i, j])
         return result
 
+class CausalMaskTorch(Bond):
+    """Masks the upper triangular part of the attention scores."""
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+    
+    def forward(self, x, w):
+        scores = x
+        
+        # Crucial: create the mask on the SAME device (CPU/GPU) as the input 'x'
+        mask = torch.tril(torch.ones(scores.shape[-2:], dtype=torch.bool, device=x.device))
+        
+        # Apply the mask
+        return torch.where(mask, scores, float('-inf'))
 
+class SplitIntoHeadsTorch(Bond):
+    """Reshapes an input to have heads."""
+    def __init__(self, num_heads):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+        self.num_heads = num_heads
+    
+    def forward(self, x, w):
+        B, T, D = x.shape
+        
+        # PyTorch uses .permute() to swap multiple dimensions
+        return x.reshape(B, T, self.num_heads, D // self.num_heads).permute(0, 2, 1, 3)
+
+class MergeHeadsTorch(Bond):
+    """Inverse of SplitIntoHeads."""
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+    
+    def forward(self, x, w):
+        B, num_heads, T, head_dim = x.shape
+        
+        # .permute() to swap back, then reshape to flatten
+        return x.permute(0, 2, 1, 3).reshape(B, T, num_heads * head_dim
+                                             
+class AttentionQKTorch(Bond):
+    """Computes the query and key matrix multiplication in attention."""
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1  # Still doing nothing here!
+    
+    def forward(self, x, w):
+        q, k = x  # both shape [batch, n_heads, seq_len, d_query]
+        
+        # Note: Standard attention usually uses 1 / sqrt(d_query)
+        # I left it as 1 / d_query to match your original code
+        scale = 1 / q.shape[-1] 
+        
+        # PyTorch: .transpose() swaps exactly two dimensions. 
+        # We swap the last two: seq_len (dim -2) and d_query (dim -1)
+        scores = q @ k.transpose(-2, -1) * scale
+        
+        return scores  # shape [batch, n_heads, seq_len, seq_len]
+class RopeTorch(Bond):
+    """Rotates queries and keys by relative context window distance."""
+    def __init__(self, d_head, base=10000):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1  # Still orthogonal, still doing nothing here!
+
+        self.rope_dim = d_head // 2
+        
+        # PyTorch arange needs an explicit float conversion before division
+        indices = torch.arange(self.rope_dim, dtype=torch.float32) / self.rope_dim
+        self.inverse_frequencies = 1.0 / (base ** indices)
+        
+        self.seq_len_cached = None
+        self.sin_cached = None
+        self.cos_cached = None
+    
+    def get_cached(self, seq_len, device=None):
+        # We also check if the device changed, so we don't accidentally cache CPU tensors 
+        # on step 1 and try to use them on the GPU on step 2.
+        if self.seq_len_cached != seq_len or (self.sin_cached is not None and self.sin_cached.device != device):
+            self.seq_len_cached = seq_len
+            
+            # Ensure inverse_frequencies is on the right device
+            if device is not None:
+                self.inverse_frequencies = self.inverse_frequencies.to(device)
+                
+            distance = torch.arange(seq_len, dtype=torch.float32, device=self.inverse_frequencies.device)
+            
+            # torch.outer perfectly mimics jnp.outer
+            freqs = torch.outer(distance, self.inverse_frequencies)  # shape [seq_len, rope_dim]
+            
+            # PyTorch doesn't have a multi-axis expand_dims. 
+            # We use .unsqueeze(0) twice to add the batch and head dimensions.
+            # Alternately, you could use None indexing: torch.cos(freqs)[None, None, :, :]
+            self.cos_cached = torch.cos(freqs).unsqueeze(0).unsqueeze(0)  # shape [1, 1, seq_len, rope_dim]
+            self.sin_cached = torch.sin(freqs).unsqueeze(0).unsqueeze(0)  # shape [1, 1, seq_len, rope_dim]
+            
+        return self.sin_cached, self.cos_cached
+class ApplyAttentionScoresTorch(Bond):
+    """Computes attention values from the scores."""
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1  # Still boilerplate!
+    
+    def forward(self, x, w):
+        v, scores = x
+        
+        # The @ operator perfectly maps to torch.matmul() under the hood
+        return scores @ v
 # ─────────────────────────────────────────────────────────────────────────────
 # Mass schedules
 # ─────────────────────────────────────────────────────────────────────────────
@@ -199,16 +311,16 @@ def ViT_L_14(num_classes=768, num_blocks=24, d_embed=1024, patch_size=14,
 # ─────────────────────────────────────────────────────────────────────────────
 def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     """Multi-head attention"""
-    Q = SplitIntoHeads(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
-    K = SplitIntoHeads(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
-    V = SplitIntoHeads(num_heads) @ LinearSVD(num_heads * d_value, d_embed)
-    W = Linear(d_embed, num_heads * d_value) @ MergeHeads()
+    Q = SplitIntoHeadsTorch(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
+    K = SplitIntoHeadsTorch(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
+    V = SplitIntoHeadsTorch(num_heads) @ LinearSVD(num_heads * d_value, d_embed)
+    W = LinearSVD(d_embed, num_heads * d_value) @ MergeHeadsTorch()
     
     if causal:
-        AttentionScores = Softmax(softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
+        AttentionScores = CausalMaskTorch() @ AttentionQKTorch() @ RopeTorch(d_query) @ (Q, K)
     else:
-        AttentionScores = Softmax(softmax_scale) @ AttentionQK() @ Rope(d_query) @ (Q, K)
-    return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
+        AttentionScores =  AttentionQKTorch() @ RopeTorch(d_query) @ (Q, K)
+    return W @ (1/3 * ApplyAttentionScoresTorch()) @ (V, AttentionScores)
     
 def FlanT5Base(
     d_model=768,
