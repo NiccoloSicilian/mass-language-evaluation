@@ -159,7 +159,7 @@ dependencies = [
     "qdldl>=0.1.7.post1",
     "requests==2.32.3",
     "rich==13.7.1",
-    "scipy>=1.11.4",
+    "scipy>=1.12.0",
     "seaborn==0.13.2",
     "setproctitle==1.3.3",
     "torch>=2.0.1",
