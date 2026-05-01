@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mass"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = "== 3.11.8"
 description = "Playing with those task vectors"
 authors = [{ name = "Donato Crisostomi", email = "donatocrisostomi@gmail.com" }]
 license = { text = "MIT" }
@@ -132,7 +132,7 @@ dependencies = [
     "networkx==3.4.2",
     "nn-template-core==0.3.2",
     "nodeenv==1.8.0",
-    "numpy==2.4.4",
+    "numpy==1.26.4",
     "omegaconf==2.3.0",
     "open-clip-torch==2.0.2",
     "ordered-set==4.1.0",
@@ -174,7 +174,6 @@ dependencies = [
     "websockets==11.0.3",
     "mplcursors>=0.6",
     "nbformat>=5.10.4",
-    "sentencepiece>=0.2.1",
 ]
 
 [tool.setuptools]
@@ -184,11 +183,15 @@ packages = ["mass"]
 mass = { workspace = true }
 
 [project.scripts]
-evaluate_vision = "mass.scripts.evaluate_vision:main"
-evaluate_language = "mass.scripts.evaluate_llms:main"
-evaluate_causal = "mass.scripts.evaluate_causal_llm:main"
+evaluate = "mass.scripts.evaluate_pipeline:main"
+get_ft_accs = "mass.scripts.get_finetuned_accs:main"
+train = "mass.scripts.train_router:main"
+interpret = "mass.scripts.interpret:main"
+smile = "mass.scripts.evaluate_smile:main"
+wemoe = "mass.scripts.evaluate_we_moe:main"
 static_merge = "mass.scripts.evaluate_static_merging:main"
-finetune = "mass.scripts.finetune:main"
+ood = "mass.scripts.evaluate_pipeline_ood:main"
+ood_static = "mass.scripts.evaluate_static_merging_ood:main"
 
 [dependency-groups]
 dev = [
