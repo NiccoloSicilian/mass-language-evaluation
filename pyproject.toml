@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mass"
 version = "0.1.0"
-requires-python = ">=3.11.7"
+requires-python = ">=3.11"
 description = "Playing with those task vectors"
 authors = [{ name = "Donato Crisostomi", email = "donatocrisostomi@gmail.com" }]
 license = { text = "MIT" }
