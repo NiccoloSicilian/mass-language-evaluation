@@ -422,11 +422,11 @@ def get_t5_topological_order(keys):
       encoder blocks 0-11  (q, k, v, o, wi_0, wi_1, wo per block)
       decoder blocks 0-11  (self q/k/v/o, cross q/k/v/o, wi_0, wi_1, wo per block)
     """
-    _ENC_ATT  = {"q": 0, "k": 1, "v": 2, "o": 3}
-    _ENC_FFN  = {"wi_0": 4, "wi_1": 5, "wo": 6}
-    _DEC_SELF  = {"q": 0, "k": 1, "v": 2, "o": 3}
-    _DEC_CROSS = {"q": 4, "k": 5, "v": 6, "o": 7}
-    _DEC_FFN   = {"wi_0": 8, "wi_1": 9, "wo": 10}
+    _ENC_ATT  = {"q": 0, "k": 1, "v": 2, "o": 3, "relative_attention_bias": 4}
+    _ENC_FFN  = {"wi_0": 5, "wi_1": 6, "wo": 7}
+    _DEC_SELF  = {"q": 0, "k": 1, "v": 2, "o": 3, "relative_attention_bias": 4}
+    _DEC_CROSS = {"q": 5, "k": 6, "v": 7, "o": 8}
+    _DEC_FFN   = {"wi_0": 9, "wi_1": 10, "wo": 11}
 
     def sort_key(name):
         m = re.search(r"encoder\.block\.(\d+)", name)
@@ -447,6 +447,7 @@ def get_t5_topological_order(keys):
                 for param, sub in _DEC_SELF.items():
                     if f"SelfAttention.{param}.weight" in name:
                         return (1, block, sub)
+            
             if "EncDecAttention" in name:
                 for param, sub in _DEC_CROSS.items():
                     if f"EncDecAttention.{param}.weight" in name:
