@@ -80,7 +80,7 @@ class DualMerger(TaskVectorBasedMerger):
             pylogger.error(f"Unknown aggregation_mode: '{self.aggregation_mode}'")
             return None
         '''
-        multi_task_vector_cpu = cumulative_dict
+        multi_task_vector = cumulative_dict
         # ── Step 4: move to CPU before dualisation ───────────────────────────
         multi_task_vector_cpu = {k: v.cpu() for k, v in multi_task_vector.items()}
         del multi_task_vector
