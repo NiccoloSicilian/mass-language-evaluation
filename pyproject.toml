@@ -137,7 +137,7 @@ dependencies = [
     "open-clip-torch==2.0.2",
     "ordered-set==4.1.0",
     "orjson==3.10.0",
-    "osqp==0.6.5",
+    "osqp>=0.6.5",
     "packaging==24.2",
     "pandas>=2.2.2",
     "pathspec==0.12.1",
