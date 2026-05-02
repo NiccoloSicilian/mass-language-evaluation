@@ -33,7 +33,7 @@ class EmbedSVD(Atom):
         self.num_embed = num_embed
         self.d_embed = d_embed
         self.smooth = True
-        self.mass = 1
+        self.mass = 0.5
         self.sensitivity = 1
 
     def forward(self, x, w):
@@ -471,10 +471,10 @@ def get_t5_topological_order(keys):
       encoder blocks 0-11  (q, k, v, o, wi_0, wi_1, wo per block)
       decoder blocks 0-11  (self q/k/v/o, cross q/k/v/o, wi_0, wi_1, wo per block)
     """
-    _ENC_ATT  = {"q": 0, "k": 1, "v": 2, "o": 3, "relative_attention_bias": 4}
+    _ENC_ATT  = {"v": 0, "q": 1, "k": 2, "o": 3, "relative_attention_bias": 4}
     _ENC_FFN  = {"wi_0": 5, "wi_1": 6, "wo": 7}
-    _DEC_SELF  = {"q": 0, "k": 1, "v": 2, "o": 3, "relative_attention_bias": 4}
-    _DEC_CROSS = {"q": 5, "k": 6, "v": 7, "o": 8}
+    _DEC_SELF  = {"v": 0, "q": 1, "k": 2, "o": 3, "relative_attention_bias": 4}
+    _DEC_CROSS = {"v": 5, "v": 6, "k": 7, "o": 8}
     _DEC_FFN   = {"wi_0": 9, "wi_1": 10, "wo": 11}
 
     def sort_key(name):
