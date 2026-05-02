@@ -401,7 +401,7 @@ def FlanT5Base(
 
         ffn   = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = EmbedSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
             att = rel_att_bias @att
         block = ffn @ att
        
@@ -420,7 +420,7 @@ def FlanT5Base(
         
         ffn       = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = EmbedSVD(32, 12);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
             self_att = rel_att_bias @self_att
         block     = ffn @ cross_att @ self_att
 
