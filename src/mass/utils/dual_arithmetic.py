@@ -474,7 +474,7 @@ def get_t5_topological_order(keys):
     _ENC_ATT  = {"v": 0, "q": 1, "k": 2, "o": 3, "relative_attention_bias": 4}
     _ENC_FFN  = {"wi_0": 5, "wi_1": 6, "wo": 7}
     _DEC_SELF  = {"v": 0, "q": 1, "k": 2, "o": 3, "relative_attention_bias": 4}
-    _DEC_CROSS = {"v": 5, "v": 6, "k": 7, "o": 8}
+    _DEC_CROSS = {"v": 5, "q": 6, "k": 7, "o": 8}
     _DEC_FFN   = {"wi_0": 9, "wi_1": 10, "wo": 11}
 
     def sort_key(name):
