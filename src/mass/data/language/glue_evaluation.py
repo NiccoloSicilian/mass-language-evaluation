@@ -38,7 +38,6 @@ def evaluate_accuracy(model, batch, tokenizer):
     with torch.no_grad():
         outputs = model.generate(
             batch["input_ids"],
-            attention_mask=batch["attention_mask"],
             max_length=10,
         )
         output_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -66,7 +65,6 @@ def evaluate_spearman_rho(model, batch, tokenizer):
     with torch.no_grad():
         outputs = model.generate(
             batch["input_ids"],
-            attention_mask=batch["attention_mask"],
             max_length=10,
         )
         output_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)
