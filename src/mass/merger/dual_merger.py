@@ -108,9 +108,6 @@ class DualMerger(TaskVectorBasedMerger):
 
         for key in dualized:
             multi_task_vector_cpu[key] = dualized[key]
-        for key in multi_task_vector_cpu:
-            if key not in dualized:
-                multi_task_vector_cpu[key] = multi_task_vector_cpu[key]/ num_tasks
             
         multi_task_vector_cpu = {
             k: v.to(self.device) for k, v in multi_task_vector_cpu.items()
