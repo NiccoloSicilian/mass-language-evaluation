@@ -8,10 +8,68 @@ from mass.merger.merger import TaskVectorBasedMerger
 from mass.utils.utils import apply_dict_to_model, compute_task_dict, print_memory, sum_task_dict
 from mass.utils.task_vectors import avg_layers, get_svd_dict, sum_svd
 from mass.utils.dual_arithmetic import build_duality_map, get_t5_topological_order, get_vit_topological_order
-
+import os
+from pathlib import Path
 pylogger = logging.getLogger(__name__)
 
-
+def save_task_vectors(
+    task_vectors_dict,
+    save_dir,
+    model_name,
+    num_tasks,
+    aggregation_mode,
+    mass_schedule,
+    datasets=None
+):
+    """
+    Save the processed multi-task vector dictionary to disk.
+    
+    Args:
+        task_vectors_dict: Dict {layer_name -> tensor} of task vectors
+        save_dir: Directory to save the checkpoint
+        model_name: Model identifier (e.g., "t5-base", "ViT-B-32")
+        num_tasks: Number of tasks merged
+        aggregation_mode: "avg" or "tsv"
+        mass_schedule: "uniform" or "linear"
+        datasets: Optional list of dataset names for filename
+    
+    Returns:
+        Path to saved file
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Construct filename
+    dataset_str = "_".join(datasets) if datasets else "merged"
+    if len(dataset_str) > 100:  # Truncate if too long
+        dataset_str = f"{len(datasets)}tasks"
+    
+    filename = (
+        f"task_vectors_{model_name}_{dataset_str}_"
+        f"n{num_tasks}_{aggregation_mode}_{mass_schedule}.pt"
+    )
+    # Sanitize filename (replace problematic characters)
+    filename = filename.replace("/", "_").replace(" ", "_")
+    
+    save_path = Path(save_dir) / filename
+    
+    # Save with metadata
+    checkpoint = {
+        "task_vectors": task_vectors_dict,
+        "metadata": {
+            "model_name": model_name,
+            "num_tasks": num_tasks,
+            "aggregation_mode": aggregation_mode,
+            "mass_schedule": mass_schedule,
+            "datasets": datasets,
+            "num_layers": len(task_vectors_dict),
+        }
+    }
+    
+    torch.save(checkpoint, save_path)
+    pylogger.info(f"Saved task vectors to: {save_path}")
+    
+    return save_path
+    
 class DualMerger(TaskVectorBasedMerger):
 
     def __init__(
@@ -111,7 +169,15 @@ class DualMerger(TaskVectorBasedMerger):
         for key in multi_task_vector_cpu:
             if key not in dualized:
                 multi_task_vector_cpu[key] = multi_task_vector_cpu[key]/ num_tasks
-            
+        save_task_vectors(
+                task_vectors_dict=multi_task_vector_cpu,
+                save_dir=self.task_vectors_save_dir,
+                model_name=self.model_name,
+                num_tasks=num_tasks,
+                aggregation_mode=self.aggregation_mode,
+                mass_schedule=self.mass_schedule,
+                datasets=datasets,
+            )
         multi_task_vector_cpu = {
             k: v.to(self.device) for k, v in multi_task_vector_cpu.items()
         }
