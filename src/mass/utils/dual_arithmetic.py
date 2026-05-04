@@ -360,7 +360,8 @@ def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     K = LinearSVD(num_heads * d_query, d_embed)
     V = LinearSVD(num_heads * d_value, d_embed)
     W = LinearSVD(d_embed, num_heads * d_value) @ MergeHeadsTorch()
-    att = (V, Q, K)
+    vq_block = (V, Q)
+    att = (vq_block,K)
     att.sensitivity=1.0
     return W @ att
     
