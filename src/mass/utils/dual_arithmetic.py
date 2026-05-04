@@ -594,8 +594,8 @@ def build_duality_map(layer_names, grads, device, mass_schedule, model_name):
                 dec_grads.append(grads[name].to(device))
         
         print(f"build_duality_map (T5):")
-        print(f"  encoder: atoms={len(encoder.atoms)}, mass={encoder.mass}, to_dualize={len(enc_grads)}")
-        print(f"  decoder: atoms={len(decoder.atoms)}, mass={decoder.mass}, to_dualize={len(dec_grads)}")
+        print(f"  encoder: atoms={encoder.atoms}, mass={encoder.mass}, to_dualize={len(enc_grads)}")
+        print(f"  decoder: atoms={decoder.atoms}, mass={decoder.mass}, to_dualize={len(dec_grads)}")
         
         # Dualize separately to avoid mass-ratio contamination
         enc_dualized = encoder.dualize(enc_grads)
