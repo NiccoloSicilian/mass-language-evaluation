@@ -44,7 +44,7 @@ def save_task_vectors(
         dataset_str = f"{len(datasets)}tasks"
     
     filename = (
-        f"task_vectors_{model_name}_{dataset_str}_"
+        f"Dual_task_vectors_{model_name}_{dataset_str}_"
         f"n{num_tasks}_{aggregation_mode}_{mass_schedule}.pt"
     )
     # Sanitize filename (replace problematic characters)
@@ -171,7 +171,7 @@ class DualMerger(TaskVectorBasedMerger):
                 multi_task_vector_cpu[key] = multi_task_vector_cpu[key]/ num_tasks
         save_task_vectors(
                 task_vectors_dict=multi_task_vector_cpu,
-                save_dir=self.task_vectors_save_dir,
+                save_dir="/leonardo_scratch/large/userexternal/nsicilia/DualMerging/outputs/llm_eval_chck",
                 model_name=self.model_name,
                 num_tasks=num_tasks,
                 aggregation_mode=self.aggregation_mode,
