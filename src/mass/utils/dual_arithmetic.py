@@ -360,8 +360,8 @@ def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     K = LinearSVD(num_heads * d_query, d_embed)
     V = LinearSVD(num_heads * d_value, d_embed)
     W = LinearSVD(d_embed, num_heads * d_value) @ MergeHeadsTorch()
-    vq_block = V+ Q
-    att = vq_block+K
+    vq_block = (V, Q)
+    att = (vq_block,K)
     att.sensitivity=1.0
     return W @ att
     
@@ -374,69 +374,58 @@ def FlanT5Base(
     mass_schedule="uniform",
 ):
     """
-    Modula composition graphs for FLAN-T5-base encoder and decoder.
-    
-    Returns encoder and decoder as separate graphs to avoid mass-ratio 
-    contamination during dualization.
-    
-    Encoder: 12 blocks × (4 attn + 3 ffn) + 1 rel_att_bias = 85 atoms
-    Decoder: 12 blocks × (4 self + 4 cross + 3 ffn) + 1 rel_att_bias = 133 atoms
-    
-    Returns:
-        (encoder, decoder): Tuple of separate Modula graphs
+    Modula composition graph for FLAN-T5-base.
+
+    Execution order (matches get_t5_topological_order):
+      encoder blocks 0-11  : q → k → v → o → wi_0 → wi_1 → wo   (7 atoms each)
+      decoder blocks 0-11  : sq → sk → sv → so                    (self-att)
+                             → cq → ck → cv → co                  (cross-att)
+                             → wi_0 → wi_1 → wo                   (FFN)
+                                                                   (11 atoms each)
+    Total atoms: 12×7 + 12×11 = 216
     """
     ms = uniform_mass_schedule if mass_schedule == "uniform" else linear_mass_schedule
-    
+    tot_layers = num_encoder_layers * 7 + num_decoder_layers * 11 +2
+    layer_idx = 0
+
     # ── Encoder ──────────────────────────────────────────────────────────────
     encoder = None
-    enc_tot_layers = num_encoder_layers * 7 + 1  # 85 atoms
-    enc_layer_idx = 0
-    
     for i in range(num_encoder_layers):
-        att = Attention(12, d_model, 64, 64, 1.0, causal=False)
-        enc_layer_idx += 4
-        
-        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
-        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
-        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
-        
-        ffn = wo @ wi_1 @ wi_0
-        
+        att = Attention(12,d_model, 64, 64, 1.0, False)
+        layer_idx += 4
+        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
+        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
+        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
+
+        ffn   = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
-            att = rel_att_bias @ att
-            
+            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            att = rel_att_bias @att
         block = ffn @ att
+       
         encoder = block @ encoder if encoder is not None else block
-    
+
     # ── Decoder ──────────────────────────────────────────────────────────────
     decoder = None
-    dec_tot_layers = num_decoder_layers * 11 + 1  # 133 atoms
-    dec_layer_idx = 0
-    
     for i in range(num_decoder_layers):
-        # Self-attention is CAUSAL (decoder tokens only)
-        self_att = Attention(12, d_model, 64, 64, 1.0, causal=True)
-        dec_layer_idx += 4
+        self_att = Attention(12,d_model, 64, 64, 1.0, False)
+        layer_idx += 4
+        cross_att = Attention(12,d_model, 64, 64, 1.0, True)
+        layer_idx += 4
+        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
+        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
+        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
         
-        # Cross-attention is NOT CAUSAL (attends to full encoder output)
-        cross_att = Attention(12, d_model, 64, 64, 1.0, causal=False)
-        dec_layer_idx += 4
-        
-        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
-        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
-        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
-        
-        ffn = wo @ wi_1 @ wi_0
-        
+        ffn       = wo @ wi_1 @ wi_0
         if i == 0:
-            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
-            self_att = rel_att_bias @ self_att
-            
-        block = ffn @ cross_att @ self_att
+            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
+            self_att = rel_att_bias @self_att
+        block     = ffn @ cross_att @ self_att
+
         decoder = block @ decoder if decoder is not None else block
-    
-    return encoder, decoder
+
+    return decoder @ encoder
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # T5 key utilities
@@ -558,71 +547,47 @@ def get_vit_topological_order(keys):
 # ─────────────────────────────────────────────────────────────────────────────
 # Main entry point
 # ─────────────────────────────────────────────────────────────────────────────
+
 def build_duality_map(layer_names, grads, device, mass_schedule, model_name):
     """
     Build the modular duality map and apply it to the task-vector gradients.
-    
+
     Args:
         layer_names: Keys in topological order (already sorted by the caller).
         grads:       Dict {layer_name -> tensor} of averaged/TSV task vectors.
         device:      torch.device to move tensors to during dualisation.
         mass_schedule: "uniform" or "linear".
         model_name:  Used to pick the right architecture graph.
-    
+
     Returns:
         Dict {layer_name -> dualized tensor} for all dualised keys.
     """
-    
+    # ── Select architecture graph ─────────────────────────────────────────────
+    m = None
     if "t5" in model_name.lower():
-        # ── T5: Separate encoder/decoder handling ────────────────────────────
-        encoder, decoder = FlanT5Base(mass_schedule=mass_schedule)
-        
-        # Collect encoder keys and gradients
-        enc_names = []
-        enc_grads = []
-        for name in layer_names:
-            if "encoder" in name and _is_t5_matrix_key(name):
-                enc_names.append(name)
-                enc_grads.append(grads[name].to(device))
-        
-        # Collect decoder keys and gradients
-        dec_names = []
-        dec_grads = []
-        for name in layer_names:
-            if "decoder" in name and _is_t5_matrix_key(name):
-                dec_names.append(name)
-                dec_grads.append(grads[name].to(device))
-        
-        print(f"build_duality_map (T5):")
-        print(f"  encoder: atoms={encoder.atoms}, mass={encoder.mass}, to_dualize={len(enc_grads)}")
-        print(f"  decoder: atoms={decoder.atoms}, mass={decoder.mass}, to_dualize={len(dec_grads)}")
-        
-        # Dualize separately to avoid mass-ratio contamination
-        enc_dualized = encoder.dualize(enc_grads)
-        dec_dualized = decoder.dualize(dec_grads)
-        
-        # Merge results
-        dualized_dict = {}
-        dualized_dict.update(zip(enc_names, enc_dualized))
-        dualized_dict.update(zip(dec_names, dec_dualized))
-        
-        return dualized_dict
-        
+        m = FlanT5Base(mass_schedule=mass_schedule)
+    elif "B-16" in model_name:
+        m = ViT_B_16(mass_schedule=mass_schedule)
+    elif "B-32" in model_name:
+        m = ViT_B_32(mass_schedule=mass_schedule)
+    elif "L-14" in model_name:
+        m = ViT_L_14(mass_schedule=mass_schedule)
     else:
-        # ── ViT: Single graph handling ───────────────────────────────────────
-        if "B-16" in model_name:
-            m = ViT_B_16(mass_schedule=mass_schedule)
-        elif "B-32" in model_name:
-            m = ViT_B_32(mass_schedule=mass_schedule)
-        elif "L-14" in model_name:
-            m = ViT_L_14(mass_schedule=mass_schedule)
-        else:
-            raise ValueError(f"No matching duality map for model_name='{model_name}'")
-        
-        # Collect keys and gradients to dualize
-        to_consider_name = []
-        to_consider_grad = []
-        
+        raise ValueError(f"No matching duality map for model_name='{model_name}'")
+
+    # ── Collect keys and gradients to dualise ────────────────────────────────
+    to_consider_name = []
+    to_consider_grad = []
+
+    if "t5" in model_name.lower():
+        for name in layer_names:
+            print(name, _is_t5_matrix_key(name))
+            if _is_t5_matrix_key(name):
+                to_consider_name.append(name)
+                to_consider_grad.append(grads[name].to(device))
+            else:
+                print(f"  skipped: {name}")
+    else:
         _VIT_SKIP = {"bias", "ln_", "class_embedding", "logit_scale"}
         for name in layer_names:
             if any(s in name for s in _VIT_SKIP):
@@ -647,8 +612,13 @@ def build_duality_map(layer_names, grads, device, mass_schedule, model_name):
             ):
                 to_consider_name.append(name)
                 to_consider_grad.append(grads[name].to(device))
-        
-        print(f"build_duality_map (ViT): atoms={len(m.atoms)}, mass={m.mass}, to_dualize={len(to_consider_grad)}")
-        
-        dualized = m.dualize(to_consider_grad)
-        return dict(zip(to_consider_name, dualized))
+            else:
+                print(f"  skipped: {name}")
+
+    print(
+        f"build_duality_map: atoms={m.atoms}, mass={m.mass}, "
+        f"to_dualize={len(to_consider_grad)}"
+    )
+
+    dualized = m.dualize(to_consider_grad)
+    return dict(zip(to_consider_name, dualized))
