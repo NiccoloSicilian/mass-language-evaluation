@@ -356,16 +356,11 @@ def ViT_L_14(num_classes=768, num_blocks=24, d_embed=1024, patch_size=14,
 # ─────────────────────────────────────────────────────────────────────────────
 def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     """Multi-head attention"""
-    Q = SplitIntoHeadsTorch(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
-    K = SplitIntoHeadsTorch(num_heads) @ LinearSVD(num_heads * d_query, d_embed)
-    V = SplitIntoHeadsTorch(num_heads) @ LinearSVD(num_heads * d_value, d_embed)
+    Q = LinearSVD(num_heads * d_query, d_embed)
+    K = LinearSVD(num_heads * d_query, d_embed)
+    V = LinearSVD(num_heads * d_value, d_embed)
     W = LinearSVD(d_embed, num_heads * d_value) @ MergeHeadsTorch()
-    
-    if causal:
-        AttentionScores = CausalMaskTorch() @ AttentionQKTorch() @ RopeTorch(d_query) @ (Q, K)
-    else:
-        AttentionScores =  AttentionQKTorch() @ RopeTorch(d_query) @ (Q, K)
-    return W @ (1/3 * ApplyAttentionScoresTorch()) @ (V, AttentionScores)
+    return W @ (1/3*(V, Q, K))
     
 def FlanT5Base(
     d_model=768,
