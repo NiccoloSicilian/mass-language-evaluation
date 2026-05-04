@@ -360,11 +360,12 @@ def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     K = LinearSVD(num_heads * d_query, d_embed)
     V = LinearSVD(num_heads * d_value, d_embed)
     W = LinearSVD(d_embed, num_heads * d_value) @ MergeHeadsTorch()
-    vq_block = (V, Q)
-    att = (vq_block,K)
+    vq_block = V+ Q
+    att = vq_block+K
     att.sensitivity=1.0
     return W @ att
-    def FlanT5Base(
+    
+def FlanT5Base(
     d_model=768,
     d_ff=2048,
     inner_dim=768,         # num_heads * d_kv = 12 * 64
@@ -557,47 +558,71 @@ def get_vit_topological_order(keys):
 # ─────────────────────────────────────────────────────────────────────────────
 # Main entry point
 # ─────────────────────────────────────────────────────────────────────────────
-
 def build_duality_map(layer_names, grads, device, mass_schedule, model_name):
     """
     Build the modular duality map and apply it to the task-vector gradients.
-
+    
     Args:
         layer_names: Keys in topological order (already sorted by the caller).
         grads:       Dict {layer_name -> tensor} of averaged/TSV task vectors.
         device:      torch.device to move tensors to during dualisation.
         mass_schedule: "uniform" or "linear".
         model_name:  Used to pick the right architecture graph.
-
+    
     Returns:
         Dict {layer_name -> dualized tensor} for all dualised keys.
     """
-    # ── Select architecture graph ─────────────────────────────────────────────
-    m = None
+    
     if "t5" in model_name.lower():
-        m = FlanT5Base(mass_schedule=mass_schedule)
-    elif "B-16" in model_name:
-        m = ViT_B_16(mass_schedule=mass_schedule)
-    elif "B-32" in model_name:
-        m = ViT_B_32(mass_schedule=mass_schedule)
-    elif "L-14" in model_name:
-        m = ViT_L_14(mass_schedule=mass_schedule)
-    else:
-        raise ValueError(f"No matching duality map for model_name='{model_name}'")
-
-    # ── Collect keys and gradients to dualise ────────────────────────────────
-    to_consider_name = []
-    to_consider_grad = []
-
-    if "t5" in model_name.lower():
+        # ── T5: Separate encoder/decoder handling ────────────────────────────
+        encoder, decoder = FlanT5Base(mass_schedule=mass_schedule)
+        
+        # Collect encoder keys and gradients
+        enc_names = []
+        enc_grads = []
         for name in layer_names:
-            print(name, _is_t5_matrix_key(name))
-            if _is_t5_matrix_key(name):
-                to_consider_name.append(name)
-                to_consider_grad.append(grads[name].to(device))
-            else:
-                print(f"  skipped: {name}")
+            if "encoder" in name and _is_t5_matrix_key(name):
+                enc_names.append(name)
+                enc_grads.append(grads[name].to(device))
+        
+        # Collect decoder keys and gradients
+        dec_names = []
+        dec_grads = []
+        for name in layer_names:
+            if "decoder" in name and _is_t5_matrix_key(name):
+                dec_names.append(name)
+                dec_grads.append(grads[name].to(device))
+        
+        print(f"build_duality_map (T5):")
+        print(f"  encoder: atoms={len(encoder.atoms)}, mass={encoder.mass}, to_dualize={len(enc_grads)}")
+        print(f"  decoder: atoms={len(decoder.atoms)}, mass={decoder.mass}, to_dualize={len(dec_grads)}")
+        
+        # Dualize separately to avoid mass-ratio contamination
+        enc_dualized = encoder.dualize(enc_grads)
+        dec_dualized = decoder.dualize(dec_grads)
+        
+        # Merge results
+        dualized_dict = {}
+        dualized_dict.update(zip(enc_names, enc_dualized))
+        dualized_dict.update(zip(dec_names, dec_dualized))
+        
+        return dualized_dict
+        
     else:
+        # ── ViT: Single graph handling ───────────────────────────────────────
+        if "B-16" in model_name:
+            m = ViT_B_16(mass_schedule=mass_schedule)
+        elif "B-32" in model_name:
+            m = ViT_B_32(mass_schedule=mass_schedule)
+        elif "L-14" in model_name:
+            m = ViT_L_14(mass_schedule=mass_schedule)
+        else:
+            raise ValueError(f"No matching duality map for model_name='{model_name}'")
+        
+        # Collect keys and gradients to dualize
+        to_consider_name = []
+        to_consider_grad = []
+        
         _VIT_SKIP = {"bias", "ln_", "class_embedding", "logit_scale"}
         for name in layer_names:
             if any(s in name for s in _VIT_SKIP):
@@ -622,13 +647,8 @@ def build_duality_map(layer_names, grads, device, mass_schedule, model_name):
             ):
                 to_consider_name.append(name)
                 to_consider_grad.append(grads[name].to(device))
-            else:
-                print(f"  skipped: {name}")
-
-    print(
-        f"build_duality_map: atoms={m.atoms}, mass={m.mass}, "
-        f"to_dualize={len(to_consider_grad)}"
-    )
-
-    dualized = m.dualize(to_consider_grad)
-    return dict(zip(to_consider_name, dualized))
+        
+        print(f"build_duality_map (ViT): atoms={len(m.atoms)}, mass={m.mass}, to_dualize={len(to_consider_grad)}")
+        
+        dualized = m.dualize(to_consider_grad)
+        return dict(zip(to_consider_name, dualized))
