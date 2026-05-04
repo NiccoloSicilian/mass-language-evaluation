@@ -364,8 +364,7 @@ def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     att = (vq_block,K)
     att.sensitivity=1.0
     return W @ att
-    
-def FlanT5Base(
+    def FlanT5Base(
     d_model=768,
     d_ff=2048,
     inner_dim=768,         # num_heads * d_kv = 12 * 64
@@ -374,58 +373,69 @@ def FlanT5Base(
     mass_schedule="uniform",
 ):
     """
-    Modula composition graph for FLAN-T5-base.
-
-    Execution order (matches get_t5_topological_order):
-      encoder blocks 0-11  : q → k → v → o → wi_0 → wi_1 → wo   (7 atoms each)
-      decoder blocks 0-11  : sq → sk → sv → so                    (self-att)
-                             → cq → ck → cv → co                  (cross-att)
-                             → wi_0 → wi_1 → wo                   (FFN)
-                                                                   (11 atoms each)
-    Total atoms: 12×7 + 12×11 = 216
+    Modula composition graphs for FLAN-T5-base encoder and decoder.
+    
+    Returns encoder and decoder as separate graphs to avoid mass-ratio 
+    contamination during dualization.
+    
+    Encoder: 12 blocks × (4 attn + 3 ffn) + 1 rel_att_bias = 85 atoms
+    Decoder: 12 blocks × (4 self + 4 cross + 3 ffn) + 1 rel_att_bias = 133 atoms
+    
+    Returns:
+        (encoder, decoder): Tuple of separate Modula graphs
     """
     ms = uniform_mass_schedule if mass_schedule == "uniform" else linear_mass_schedule
-    tot_layers = num_encoder_layers * 7 + num_decoder_layers * 11 +2
-    layer_idx = 0
-
+    
     # ── Encoder ──────────────────────────────────────────────────────────────
     encoder = None
+    enc_tot_layers = num_encoder_layers * 7 + 1  # 85 atoms
+    enc_layer_idx = 0
+    
     for i in range(num_encoder_layers):
-        att = Attention(12,d_model, 64, 64, 1.0, False)
-        layer_idx += 4
-        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
-        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
-        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
-
-        ffn   = wo @ wi_1 @ wi_0
+        att = Attention(12, d_model, 64, 64, 1.0, causal=False)
+        enc_layer_idx += 4
+        
+        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
+        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
+        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
+        
+        ffn = wo @ wi_1 @ wi_0
+        
         if i == 0:
-            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
-            att = rel_att_bias @att
+            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(enc_layer_idx, enc_tot_layers); enc_layer_idx += 1
+            att = rel_att_bias @ att
+            
         block = ffn @ att
-       
         encoder = block @ encoder if encoder is not None else block
-
+    
     # ── Decoder ──────────────────────────────────────────────────────────────
     decoder = None
+    dec_tot_layers = num_decoder_layers * 11 + 1  # 133 atoms
+    dec_layer_idx = 0
+    
     for i in range(num_decoder_layers):
-        self_att = Attention(12,d_model, 64, 64, 1.0, False)
-        layer_idx += 4
-        cross_att = Attention(12,d_model, 64, 64, 1.0, True)
-        layer_idx += 4
-        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(layer_idx, tot_layers); layer_idx += 1
-        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(layer_idx, tot_layers); layer_idx += 1
-        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(layer_idx, tot_layers); layer_idx += 1
+        # Self-attention is CAUSAL (decoder tokens only)
+        self_att = Attention(12, d_model, 64, 64, 1.0, causal=True)
+        dec_layer_idx += 4
         
-        ffn       = wo @ wi_1 @ wi_0
+        # Cross-attention is NOT CAUSAL (attends to full encoder output)
+        cross_att = Attention(12, d_model, 64, 64, 1.0, causal=False)
+        dec_layer_idx += 4
+        
+        wi_0 = LinearSVD(d_ff, d_model);       wi_0.mass = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
+        wi_1 = LinearSVD(d_ff, d_model);       wi_1.mass = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
+        wo   = LinearSVD(d_model, d_ff);       wo.mass   = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
+        
+        ffn = wo @ wi_1 @ wi_0
+        
         if i == 0:
-            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(layer_idx, tot_layers); layer_idx += 1
-            self_att = rel_att_bias @self_att
-        block     = ffn @ cross_att @ self_att
-
+            rel_att_bias = EmbedSVD(12, 32);    rel_att_bias.mass = ms(dec_layer_idx, dec_tot_layers); dec_layer_idx += 1
+            self_att = rel_att_bias @ self_att
+            
+        block = ffn @ cross_att @ self_att
         decoder = block @ decoder if decoder is not None else block
-
-    return decoder @ encoder
-
+    
+    return encoder, decoder
 
 # ─────────────────────────────────────────────────────────────────────────────
 # T5 key utilities
